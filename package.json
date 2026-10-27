@@ -1,0 +1,13 @@
+{
+  "name": "askegrav", "version": "0.1.0", "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "python3 -m http.server 8080 --bind 0.0.0.0 --directory www",
+    "sync": "npm run build && cap sync",
+    "android": "npm run sync && cap open android",
+    "ios": "npm run sync && cap open ios"
+  },
+  "dependencies": {"@capacitor/core":"8.5.3", "@capacitor/android":"8.5.3", "@capacitor/ios":"8.5.3"},
+  "devDependencies": {"@capacitor/cli":"8.5.3"},
+  "engines": {"node": ">=22"}
+}
