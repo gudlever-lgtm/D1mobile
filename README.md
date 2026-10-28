@@ -1,6 +1,6 @@
 # Askegrav
 
-Original actionrollespil inspireret af klassiske dungeon crawlers. Mobilvenlig browserprototype med tre niveauer, nærkamp, ildmagi, loot og en slutboss. Ingen eksterne assets, API-nøgler eller pakker kræves.
+Original actionrollespil inspireret af klassiske dungeon crawlers. Mobilvenlig browserprototype med tre niveauer, nærkamp, ildmagi, loot og en slutboss. Grafikken er original, lokalt genereret pixelgrafik med isometriske stenfliser, mure, gravmæler, animerede figurer, fakkellys, kamp-effekter og et udforskningskort. Spillet kræver ingen eksterne assets, netforbindelse eller API-nøgler.
 
 ## Kør lokalt
 
@@ -10,6 +10,8 @@ python3 -m http.server 8080 --bind 0.0.0.0
 ```
 
 Touch: venstre joystick til bevægelse, højre knapper til angreb, ild og helbredelse. Tastatur: WASD/pile, mellemrum (angreb), F (ild), E (drik). Dræb alle fjender på et niveau og gå til trappen nederst til højre. Besejr vogteren på niveau 3.
+
+Browserregressioner køres med `npm test` efter `npm run build`. Testene starter selv en lokal server. Chromium skal være installeret: brug systemets `/usr/bin/chromium`, sæt `CHROMIUM_PATH`, eller kør `npx playwright install chromium`.
 
 Dette er en prototype; der er endnu ingen gemte spil, lyd, appbutikspakke eller multiplayer.
 
