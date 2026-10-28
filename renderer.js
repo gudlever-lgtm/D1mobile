@@ -277,7 +277,12 @@ window.DungeonRenderer = (() => {
     const fc = fog.getContext('2d'); fc.globalCompositeOperation = 'source-over'; fc.clearRect(0, 0, w, h); fc.fillStyle = '#020507ee'; fc.fillRect(0, 0, w, h);
     fc.globalCompositeOperation = 'destination-out';
     radial(fc, w / 2, h * .57 - 12, Math.min(220, w * .8), '#000000f0', '#00000000');
-    for (const l of lights) radial(fc, l.x, l.y, l.radius * (1 + Math.sin(time * 9 + l.seed) * .025), '#000000cb', '#00000000');
+    for (const l of lights) {
+      // Stair lights have no flame seed. Only torches should flicker; using a
+      // missing seed produces a NaN radius and stops the animation loop.
+      const flicker = l.flame ? 1 + Math.sin(time * 9 + l.seed) * .025 : 1;
+      radial(fc, l.x, l.y, l.radius * flicker, '#000000cb', '#00000000');
+    }
     c.drawImage(fog, 0, 0);
     const lc = light.getContext('2d'); lc.clearRect(0, 0, w, h);
     for (const l of lights) radial(lc, l.x, l.y, l.radius * .7, l.portal ? '#8cbca728' : '#e987382c', '#aa440000');

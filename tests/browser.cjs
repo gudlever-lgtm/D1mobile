@@ -7,7 +7,8 @@ const { chromium } = require('playwright');
 // changing production code or relying on the randomly placed enemies.
 const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
  get player(){return player},get enemies(){return enemies},get depth(){return depth},
- get mode(){return mode},get potions(){return potions},get stairs(){return stairs}};`;
+ get mode(){return mode},get potions(){return potions},get stairs(){return stairs},
+ get loot(){return loot},get weapon(){return weapon},get time(){return time}};`;
 
 (async () => {
   const server = spawn('python3', ['-m', 'http.server', '0', '--bind', '127.0.0.1', '--directory', 'www'], {
@@ -64,6 +65,54 @@ const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
       g.start(); g.player.hp = 1; const e = g.enemies[0]; e.x = g.player.x; e.y = g.player.y; e.cd = 0; g.update(.01);
       check(g.mode === 'dead', 'Player death'); g.start(); check(g.player.hp === 100 && g.mode === 'playing', 'Restart');
     });
+    // Render loot before/after pickup and stay on cleared floors before taking
+    // the stairs. Going straight to the next level previously hid a renderer crash.
+    await page.evaluate(() => {
+      const g = window.testGame;
+      const check = (value, message) => { if (!value) throw Error(message); };
+      let blades = 0;
+      g.start();
+      for (let level = 1; level <= 2; level++) {
+        for (const e of g.enemies) {
+          if (e.hp <= 0) continue;
+          g.hurt(e, 999);
+          const blade = g.loot.find(l => l.type === 'sword');
+          if (blade) {
+            g.player.x = blade.x; g.player.y = blade.y - .7;
+            g.draw(); // sword still on the floor
+            g.player.y = blade.y; g.player.hp = 100;
+            g.update(.01); g.draw();
+            blades++;
+            check(g.weapon === Math.min(2, blades), 'Blade upgrade and maximum tier');
+            check(!g.loot.includes(blade), 'Collected blade removed');
+            check(document.getElementById('weapon').textContent.includes(blades === 1 ? 'Jernsværd' : 'Askeklinge'), 'Equipped blade label');
+          }
+        }
+        // Keep the stairs visible without triggering the next floor immediately.
+        g.player.x = g.stairs.x; g.player.y = g.stairs.y - 1.5;
+        g.update(.01); g.draw();
+        check(g.depth === level && g.mode === 'playing', 'Cleared floor remains playable');
+        if (level < 2) {
+          g.player.y = g.stairs.y; g.update(.01);
+          check(g.depth === level + 1, 'Stairs still work after blade pickup');
+        }
+      }
+      check(blades === 3, 'All three blade drops exercised, including maximum tier');
+    });
+    const timeBefore = await page.evaluate(() => testGame.time);
+    await page.waitForTimeout(180);
+    assert(await page.evaluate(() => testGame.time) > timeBefore, 'Animation loop keeps running with cleared-floor lights visible');
+    await page.evaluate(() => {
+      const g = testGame; g.start();
+      for (const e of g.enemies.slice(0, 5)) g.hurt(e, 999);
+      const blade = g.loot.find(l => l.type === 'sword');
+      g.player.x = blade.x; g.player.y = blade.y; g.update(.01);
+      const target = g.enemies.find(e => e.hp > 0);
+      target.x = g.player.x + 1; target.y = g.player.y; target.hp = target.max = 100;
+      g.attack();
+      if (target.hp !== 79) throw Error('Upgraded sword must deal 21 damage');
+      g.start();
+    });
     const joy = await page.locator('#joystick').boundingBox();
     const before = await page.evaluate(() => ({ ...testGame.player }));
     await page.mouse.move(joy.x + joy.width / 2, joy.y + joy.height / 2);
@@ -94,7 +143,7 @@ const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
       assert.equal(result.overflow, false, 'No horizontal layout overflow');
     }
     assert.deepEqual(errors, [], 'No browser or asset errors');
-    console.log('PASS: isometric movement, joystick, combat, healing, all levels, boss, death/restart, pause, detailed rendering and 4 viewports.');
+    console.log('PASS: isometric movement, joystick, combat, healing, all levels, boss, death/restart, blade pickups/upgrades, cleared-floor lights and continued animation, pause, detailed rendering and 4 viewports.');
   } finally {
     if (browser) await browser.close();
     server.kill();
