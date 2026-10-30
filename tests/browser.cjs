@@ -36,6 +36,7 @@ const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
       await route.fulfill({ response, body: (await response.text()).replace(/\}\)\(\);\s*$/, hook + '})();') });
     });
     await page.goto(`http://127.0.0.1:${port}`);
+    assert.equal(await page.evaluate(() => DungeonRenderer.ready), true, 'Bundled character atlas and metadata must load');
     await page.getByRole('button', { name: /TRÆD IND/ }).click();
     assert.equal(await page.locator('#overlay').isVisible(), false);
     await page.evaluate(() => {
@@ -64,6 +65,51 @@ const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
       check(g.mode === 'won', 'Boss victory');
       g.start(); g.player.hp = 1; const e = g.enemies[0]; e.x = g.player.x; e.y = g.player.y; e.cd = 0; g.update(.01);
       check(g.mode === 'dead', 'Player death'); g.start(); check(g.player.hp === 100 && g.mode === 'playing', 'Restart');
+    });
+    // Aggro is proximity + sight, or a hit on this individual enemy.
+    await page.evaluate(() => {
+      const g = testGame;
+      const check = (ok, message) => { if (!ok) throw Error(message); };
+      const fixture = (px, py, ex, ey) => {
+        g.start(); g.player.x = px; g.player.y = py;
+        const enemy = { x: ex, y: ey, hp: 100, max: 100, cd: 0, boss: false, aggro: false, moving: false };
+        g.enemies.splice(0, g.enemies.length, enemy);
+        return enemy;
+      };
+      g.start();
+      const spawn = g.enemies.map(e => ({ x: e.x, y: e.y }));
+      g.update(.1);
+      check(g.enemies.every((e, i) => !e.aggro && !e.moving && e.x === spawn[i].x && e.y === spawn[i].y), 'No enemies chase at level start');
+      let e = fixture(3.5, 3.5, 6.51, 3.5);
+      g.update(.1);
+      check(!e.aggro && !e.moving && e.x === 6.51, 'Outside aggro range stays idle');
+      e.x = 6.49; g.update(.1);
+      check(e.aggro && e.moving && e.x < 6.49, 'Entering range in an open doorway starts chase');
+      const engagedX = e.x; g.player.x = 1.5; g.update(.1);
+      check(e.aggro && e.x < engagedX, 'Engaged enemy remembers the fight beyond detection range');
+      e = fixture(5.5, 5.5, 7.5, 5.5);
+      g.update(.1);
+      check(!e.aggro && !e.moving && e.x === 7.5, 'Wall blocks detection inside range');
+      g.spell(); g.update(.1);
+      check(e.hp === 100 && !e.aggro, 'Fire cannot damage or wake enemies through a wall');
+      e = fixture(5.8, 4.2, 6.2, 3.8);
+      g.update(.1);
+      check(!e.aggro && g.player.hp === 100, 'Wall corner blocks detection and enemy melee');
+      g.attack(); g.spell();
+      check(e.hp === 100 && !e.aggro, 'Sword and fire cannot cut diagonally through a wall corner');
+      e = fixture(3.5, 3.5, 6.8, 3.5);
+      g.update(.1); check(!e.aggro, 'Ranged target starts outside detection range');
+      g.spell(); check(e.hp === 70 && e.aggro, 'Being hit provokes the target outside detection range');
+      const hitX = e.x; g.update(.1); check(e.x < hitX, 'Provoked enemy approaches');
+      e = fixture(3.5, 3.5, 4.5, 3.5);
+      const bystander = { x: 8.5, y: 3.5, hp: 100, max: 100, cd: 0, boss: false, aggro: false, moving: false };
+      g.enemies.push(bystander); g.attack(); g.update(.1);
+      check(e.aggro && !bystander.aggro && bystander.x === 8.5, 'One hit does not wake distant bystanders');
+      const boss = fixture(3.5, 3.5, 6.51, 3.5); boss.boss = true;
+      g.update(.1); check(!boss.aggro, 'Boss waits outside range too');
+      boss.x = 4.2; g.update(.1);
+      check(boss.aggro && g.player.hp === 82, 'Engaged boss still deals melee damage');
+      g.start();
     });
     // Render loot before/after pickup and stay on cleared floors before taking
     // the stairs. Going straight to the next level previously hid a renderer crash.
@@ -107,6 +153,7 @@ const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
       for (const e of g.enemies.slice(0, 5)) g.hurt(e, 999);
       const blade = g.loot.find(l => l.type === 'sword');
       g.player.x = blade.x; g.player.y = blade.y; g.update(.01);
+      g.player.x = 3.5; g.player.y = 3.5; // test damage in unobstructed terrain
       const target = g.enemies.find(e => e.hp > 0);
       target.x = g.player.x + 1; target.y = g.player.y; target.hp = target.max = 100;
       g.attack();
@@ -143,7 +190,7 @@ const hook = `window.testGame={start,update,attack,spell,heal,hurt,draw,
       assert.equal(result.overflow, false, 'No horizontal layout overflow');
     }
     assert.deepEqual(errors, [], 'No browser or asset errors');
-    console.log('PASS: isometric movement, joystick, combat, healing, all levels, boss, death/restart, blade pickups/upgrades, cleared-floor lights and continued animation, pause, detailed rendering and 4 viewports.');
+    console.log('PASS: aggro range/sight, wall and corner occlusion, hit retaliation, bystanders and boss, isometric movement, joystick, combat, healing, all levels, boss, death/restart, blade pickups/upgrades, cleared-floor lights and continued animation, pause, detailed rendering and 4 viewports.');
   } finally {
     if (browser) await browser.close();
     server.kill();

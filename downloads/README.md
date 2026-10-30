@@ -6,7 +6,7 @@ Scan QR-koden med din Android-telefon:
 
 [Hent APK direkte](https://github.com/gudlever-lgtm/D1mobile/raw/refs/heads/build/downloads/askegrav-debug.apk)
 
-Version **0.2.1**: isometrisk pixelgrafik, fakkellys, detaljerede helte og monstre samt livs- og manakugler.
+Version **0.3.0**: mere detaljerede, originale D1-inspirerede sprites og ganganimationer til helten, skeletter, dæmoner og bossen. Monstre venter nu, indtil helten kommer inden for tre gulvfelter med fri sigtelinje, eller de selv rammes. Mure og murhjørner blokerer angreb.
 
 ![Spilbillede](askegrav-gameplay.png)
 

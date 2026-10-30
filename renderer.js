@@ -2,6 +2,20 @@
 // Original, locally rendered pixel art. No remote textures or copied game assets.
 window.DungeonRenderer = (() => {
   const TW = 56, TH = 28, WALL = 49;
+  const atlas = new Image();
+  let atlasFrames = null;
+  atlas.src = 'assets/characters.png';
+  const ready = Promise.all([
+    atlas.decode(),
+    fetch('assets/characters.json').then(response => {
+      if (!response.ok) throw Error('Character atlas metadata unavailable');
+      return response.json();
+    })
+  ]).then(([, frames]) => { atlasFrames = frames; return true; }).catch(error => {
+    console.warn('Using fallback character art:', error.message);
+    return false;
+  });
+
   const iso = (x, y) => ({ x: (x - y) * TW / 2, y: (x + y) * TH / 2 });
   const noise = (x, y, seed = 0) => {
     const n = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
@@ -207,8 +221,16 @@ window.DungeonRenderer = (() => {
     for (const e of corpses) {
       const p = screen(e.x, e.y); if (!onScreen(p)) continue;
       c.fillStyle = '#491f2080'; c.beginPath(); c.ellipse(p.x, p.y, 14, 6, -.2, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#625b49'; c.fillRect(p.x - 7, p.y - 3, 12, 4); c.fillStyle = '#8d8468'; c.fillRect(p.x + 5, p.y - 4, 5, 4);
-      c.fillStyle = '#343c38'; c.fillRect(p.x - 10, p.y + 1, 6, 2);
+      if (atlasFrames) {
+        const kind = e.boss ? 'boss' : enemies.indexOf(e) % 2 ? 'brute' : 'skeleton';
+        const character = atlasFrames[kind], pose = character.frames[0];
+        const [sx, sy, sw, sh] = pose.rect, scale = (e.boss ? 64 : 39) / character.height;
+        c.save(); c.translate(p.x, p.y); c.scale(1, .45); c.rotate(-Math.PI / 2); c.globalAlpha = .6;
+        c.drawImage(atlas, sx, sy, sw, sh, -sw * scale / 2, -sh * scale / 2, sw * scale, sh * scale); c.restore();
+      } else {
+        c.fillStyle = '#625b49'; c.fillRect(p.x - 7, p.y - 3, 12, 4); c.fillStyle = '#8d8468'; c.fillRect(p.x + 5, p.y - 4, 5, 4);
+        c.fillStyle = '#343c38'; c.fillRect(p.x - 10, p.y + 1, 6, 2);
+      }
     }
     const clear = enemies.every(e => e.hp <= 0), sp = screen(stairs.x, stairs.y);
     if (depth < 3 && onScreen(sp)) {
@@ -251,14 +273,23 @@ window.DungeonRenderer = (() => {
       } else {
         const e = o.e, kind = e.hero ? 'hero' : e.boss ? 'boss' : (enemies.indexOf(e) % 2 ? 'brute' : 'skeleton');
         c.fillStyle = '#00000065'; c.beginPath(); c.ellipse(p.x, p.y + 1, e.boss ? 20 : 11, e.boss ? 7 : 4, 0, 0, Math.PI * 2); c.fill();
-        const walk = e.hero ? state.moving : Math.hypot(e.x - player.x, e.y - player.y) < 7;
+        const walk = e.hero ? state.moving : e.moving;
         const frame = walk ? Math.floor(time * 8) % 4 : 0;
-        const direction = e.hero ? e.dx - e.dy : (player.x - e.x) - (player.y - e.y);
+        const direction = e.hero ? e.dx - e.dy : e.aggro ? (player.x - e.x) - (player.y - e.y) : 1;
         const image = sprites[kind][direction < 0 ? 0 : 1][frame], size = e.boss ? 1.6 : 1;
         c.save(); c.translate(Math.round(p.x), Math.round(p.y));
         if (e.hero && attackCD > .22) c.rotate((attackCD - .3) * 1.2);
-        c.drawImage(image, -24 * size, -55 * size, 48 * size, 64 * size); c.restore();
-        if (!e.hero && (e.hp < e.max || e.boss)) {
+        if (atlasFrames) {
+          const character = atlasFrames[kind], pose = character.frames[frame];
+          const [sx, sy, sw, sh] = pose.rect;
+          const scale = (e.boss ? 77 : 48) / character.height;
+          if (direction < 0) c.scale(-1, 1);
+          c.drawImage(atlas, sx, sy, sw, sh, -pose.anchor[0] * scale, -pose.anchor[1] * scale, sw * scale, sh * scale);
+        } else {
+          c.drawImage(image, -24 * size, -55 * size, 48 * size, 64 * size);
+        }
+        c.restore();
+        if (!e.hero && (e.aggro || e.hp < e.max || e.boss)) {
           const bw = e.boss ? 48 : 24, yy = Math.round(p.y - (e.boss ? 80 : 43));
           c.fillStyle = '#111517'; c.fillRect(p.x - bw / 2 - 1, yy - 1, bw + 2, 4);
           c.fillStyle = e.boss ? '#b34e3c' : '#8e4539'; c.fillRect(p.x - bw / 2, yy, bw * e.hp / e.max, 2);
@@ -318,5 +349,5 @@ window.DungeonRenderer = (() => {
     }
     c.fillStyle = '#e3c58d'; c.fillRect(mx + player.x * 2 - 1, my + player.y * 2 - 1, 3, 3);
   }
-  return { draw, iso };
+  return { draw, iso, ready };
 })();
